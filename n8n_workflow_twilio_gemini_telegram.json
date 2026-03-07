@@ -1,0 +1,280 @@
+{
+  "name": "Auto-Answer Calls with Gemini and Telegram Transcript",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "voice/incoming",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhookIncoming",
+      "name": "Webhook Incoming Call",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        260,
+        280
+      ],
+      "webhookId": "voice-incoming-webhook"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{$json.twiml}}",
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/xml"
+              }
+            ]
+          }
+        }
+      },
+      "id": "respondIncoming",
+      "name": "Respond Incoming TwiML",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.2,
+      "position": [
+        1080,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={\n  \"twiml\": \"<?xml version=\\\"1.0\\\" encoding=\\\"UTF-8\\\"?><Response><Gather input=\\\"speech\\\" speechTimeout=\\\"auto\\\" language=\\\"en-US\\\" action=\\\"{{$env.N8N_BASE_URL}}/webhook/voice/process\\\" method=\\\"POST\\\"><Say voice=\\\"alice\\\">Hi! I am your AI call assistant. Please tell me how I can help you after the beep.</Say></Gather><Say voice=\\\"alice\\\">I did not hear anything. Goodbye.</Say><Hangup/></Response>\"\n}"
+      },
+      "id": "setIncomingTwiml",
+      "name": "Set Incoming TwiML",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        680,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "voice/process",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhookProcess",
+      "name": "Webhook Process Speech",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        260,
+        640
+      ],
+      "webhookId": "voice-process-webhook"
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={\n  \"caller\": \"{{$json.body.From || 'Unknown'}}\",\n  \"callSid\": \"{{$json.body.CallSid || 'Unknown'}}\",\n  \"speech\": \"{{$json.body.SpeechResult || 'No speech captured'}}\",\n  \"confidence\": \"{{$json.body.Confidence || 'N/A'}}\"\n}"
+      },
+      "id": "normalizeSpeech",
+      "name": "Normalize Twilio Payload",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        500,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={{$env.GEMINI_API_KEY}}",
+        "sendBody": true,
+        "contentType": "json",
+        "jsonBody": "={\n  \"contents\": [\n    {\n      \"parts\": [\n        {\n          \"text\": \"You are a phone support assistant. Reply in under 50 words, clear and polite. Caller said: {{$json.speech}}\"\n        }\n      ]\n    }\n  ],\n  \"generationConfig\": {\n    \"temperature\": 0.5,\n    \"maxOutputTokens\": 120\n  }\n}",
+        "options": {}
+      },
+      "id": "callGemini",
+      "name": "Gemini Reply",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        760,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={\n  \"caller\": \"{{$item(0).$node[\\\"Normalize Twilio Payload\\\"].json.caller}}\",\n  \"callSid\": \"{{$item(0).$node[\\\"Normalize Twilio Payload\\\"].json.callSid}}\",\n  \"speech\": \"{{$item(0).$node[\\\"Normalize Twilio Payload\\\"].json.speech}}\",\n  \"confidence\": \"{{$item(0).$node[\\\"Normalize Twilio Payload\\\"].json.confidence}}\",\n  \"aiReply\": \"{{$json.candidates[0].content.parts[0].text || 'Thank you for your call. We will follow up shortly.'}}\"\n}"
+      },
+      "id": "buildMessage",
+      "name": "Build Transcript + AI Reply",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1020,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{$env.TELEGRAM_CHAT_ID}}",
+        "text": "=📞 *New AI-Handled Call*\n\n*From:* {{$json.caller}}\n*Call SID:* {{$json.callSid}}\n*Speech Confidence:* {{$json.confidence}}\n\n*Caller Transcript:*\n{{$json.speech}}\n\n*Gemini Reply Spoken:*\n{{$json.aiReply}}",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "telegram",
+      "name": "Send Transcript to Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1260,
+        560
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE_WITH_TELEGRAM_CREDENTIAL_ID",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={\n  \"twiml\": \"<?xml version=\\\"1.0\\\" encoding=\\\"UTF-8\\\"?><Response><Say voice=\\\"alice\\\">{{$json.aiReply}}</Say><Pause length=\\\"1\\\"/><Say voice=\\\"alice\\\">Your message has been sent to our team. Goodbye.</Say><Hangup/></Response>\"\n}"
+      },
+      "id": "setProcessTwiml",
+      "name": "Set Process TwiML",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1260,
+        760
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{$json.twiml}}",
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/xml"
+              }
+            ]
+          }
+        }
+      },
+      "id": "respondProcess",
+      "name": "Respond Process TwiML",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.2,
+      "position": [
+        1510,
+        760
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook Incoming Call": {
+      "main": [
+        [
+          {
+            "node": "Set Incoming TwiML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Incoming TwiML": {
+      "main": [
+        [
+          {
+            "node": "Respond Incoming TwiML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook Process Speech": {
+      "main": [
+        [
+          {
+            "node": "Normalize Twilio Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Twilio Payload": {
+      "main": [
+        [
+          {
+            "node": "Gemini Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini Reply": {
+      "main": [
+        [
+          {
+            "node": "Build Transcript + AI Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Transcript + AI Reply": {
+      "main": [
+        [
+          {
+            "node": "Send Transcript to Telegram",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Set Process TwiML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Process TwiML": {
+      "main": [
+        [
+          {
+            "node": "Respond Process TwiML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "id": "twilio-gemini-telegram",
+  "tags": []
+}
