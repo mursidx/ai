@@ -1,2 +1,0 @@
-import { useEffect,useState } from 'react';import api from '../../lib/api';
-export default function Reports(){const [p,setP]=useState(null);useEffect(()=>{api.get('/reports/pnl').then(r=>setP(r.data));},[]);if(!p)return 'Loading';return <div className='bg-white rounded shadow p-4'><h1 className='text-2xl font-bold'>Profit & Loss</h1><p>Revenue: ₹{p.revenue}</p><p>COGS: ₹{p.cogs}</p><p>Expenses: ₹{p.expenses}</p><p className='font-bold'>Net Profit: ₹{p.netProfit}</p></div>}

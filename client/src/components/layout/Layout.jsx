@@ -1,3 +1,0 @@
-import { Link, Outlet, useLocation } from 'react-router-dom';
-const nav=[['/','Dashboard'],['/sales','Sales'],['/purchases','Purchases'],['/inventory','Inventory'],['/parties','Parties'],['/expenses','Expenses'],['/reports','Reports'],['/settings','Settings']];
-export default function Layout(){const l=useLocation();return <div className='flex min-h-screen'><aside className='w-60 bg-blue-50 p-4'>{nav.map(([to,n])=><Link key={to} className={`block p-2 rounded mb-1 ${l.pathname===to?'bg-blue-700 text-white':'text-slate-700'}`} to={to}>{n}</Link>)}</aside><main className='flex-1 p-6 overflow-auto'><Outlet/></main></div>}
